@@ -1,41 +1,29 @@
 import sqlite3
-from autenticacao import entrar, cadastrar
+import tkinter as tk
+from tkinter import messagebox
+from tkinter import simpledialog
 
+# Banco de Dados
 conn = sqlite3.connect('gerenciadorSenhas.db')
 cursor = conn.cursor()
 cursor.execute("PRAGMA foreign_keys = ON;")
-
-# Tabela de usuários
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS usuario (
+cursor.execute("""CREATE TABLE IF NOT EXISTS usuario (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nome TEXT NOT NULL,
     senhaMestra TEXT NOT NULL
-);
-""")
-
-# Tabela de senhas vinculadas ao usuário
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS senhas (
+);""")
+cursor.execute("""CREATE TABLE IF NOT EXISTS senhas (
     senha_id INTEGER PRIMARY KEY AUTOINCREMENT,
     servico TEXT NOT NULL,
     senha TEXT NOT NULL,
     usuario_id INTEGER NOT NULL,
     FOREIGN KEY (usuario_id) REFERENCES usuario(id) ON DELETE CASCADE
-);
-""")
+);""")
 
-senhas = []
-
+# Funções de Banco de Dados
 def carregarSenhas(usuario_id):
-    """Carrega as senhas do usuário no banco de dados."""
-    conn = sqlite3.connect('gerenciadorSenhas.db')
-    cursor = conn.cursor()
-    
     cursor.execute("SELECT senha_id, servico, senha FROM senhas WHERE usuario_id = ?", (usuario_id,))
     resultado = cursor.fetchall()
-    
-    # Preenche a lista senhas com os dados do banco
     global senhas
     senhas = []
     for row in resultado:
@@ -44,174 +32,147 @@ def carregarSenhas(usuario_id):
             "Serviço": row[1],
             "Senha": row[2]
         })
-    
     print(f"{len(senhas)} senhas carregadas com sucesso!")
 
 def salvarSenhasNoBD(usuario_id):
-    """Substitui todas as senhas no banco de dados pelos dados da lista senhas."""
-    conn = sqlite3.connect('gerenciadorSenhas.db')
-    cursor = conn.cursor()
-    
-    # Exclui todas as senhas associadas ao usuário
     cursor.execute("DELETE FROM senhas WHERE usuario_id = ?", (usuario_id,))
-    
-    # Insere todas as senhas presentes na lista senhas
     for senha in senhas:
-        cursor.execute("""
-            INSERT INTO senhas (servico, senha, usuario_id)
-            VALUES (?, ?, ?)
-        """, (senha['Serviço'], senha['Senha'], usuario_id))
-
+        cursor.execute("""INSERT INTO senhas (servico, senha, usuario_id)
+                          VALUES (?, ?, ?)""", (senha['Serviço'], senha['Senha'], usuario_id))
     conn.commit()
-    print("Banco de dados atualizado com as senhas mais recentes!")
 
 def cadastrarSenha():
-    senha = input("\nDigite a senha: ")
-    site = input("Insira o nome do serviço: ")
+    site = simpledialog.askstring("Novo Serviço", "Insira o nome do serviço:")  # Pergunta o serviço primeiro
+    if not site:  # Verifica se o serviço foi deixado em branco
+        messagebox.showerror("Erro", "O serviço não pode ser vazio!")
+        return
+
+    senha = simpledialog.askstring("Nova Senha", "Digite a senha:")  # Pergunta a senha depois
+    if not senha:  # Verifica se a senha foi deixada em branco
+        messagebox.showerror("Erro", "A senha não pode ser vazia!")
+        return
     
     # Gera novo ID baseado nos IDs existentes
     novo_id = max([s['Id'] for s in senhas], default=0) + 1
     
+    # Adiciona a senha à lista
     senhas.append({
         "Id": novo_id,
         "Serviço": site,
         "Senha": senha
     })
-    print("Senha cadastrada com sucesso! \n")
-
-def exibirSenhas():
-    if len(senhas) == 0:
-        print("\nNenhuma senha cadastrada")
-    else:
-        print("\nSenhas Salvas")
-        for item in senhas:
-            print(f"{item['Id']} - {item['Serviço']}: {item['Senha']}")
+    
+    # Mostra uma mensagem de sucesso
+    messagebox.showinfo("Sucesso", "Senha cadastrada com sucesso!")
 
 def excluirSenha():
-    while True:
-        try:
-            id = int(input("Insira o ID da senha que deseja remover: "))
-        except ValueError:
-            print("ERRO. ID inválido!")
-            continue
-
-        senhaEncontrada = None
-        for item in senhas:
-            if item.get("Id") == id:
-                senhaEncontrada = item
-                break  # Para o loop assim que encontra
-
-        if senhaEncontrada:
-            print(f"{senhaEncontrada['Id']} - {senhaEncontrada['Serviço']}: {senhaEncontrada['Senha']}")
-            while True:
-                op = input("Deseja remover essa senha? (S/N): ").lower().strip()
-                if op == "s":
-                    senhas.remove(senhaEncontrada)
-                    print("Senha deletada com sucesso\n")
-                    return
-                elif op == "n":
-                    print("Ação cancelada\n")
-                    return
-                else:
-                    print("Opção inválida. Digite S ou N\n")
-        else:
-            print("Nenhuma senha encontrada com esse ID\n")
+    id = simpledialog.askinteger("Excluir Senha", "Insira o ID da senha a ser excluída:")
+    senhaEncontrada = next((item for item in senhas if item["Id"] == id), None)
+    if senhaEncontrada:
+        resposta = messagebox.askyesno("Confirmar Exclusão", f"Deseja excluir a senha: {senhaEncontrada['Serviço']}?")
+        if resposta:
+            senhas.remove(senhaEncontrada)
+            messagebox.showinfo("Sucesso", "Senha deletada com sucesso!")
+    else:
+        messagebox.showerror("Erro", "Nenhuma senha encontrada com esse ID!")
 
 def editarSenha():
-    while True:
-        try:
-            id = int(input("Insira o ID da senha que deseja editar: "))
-        except ValueError:
-            print("ERRO. ID inválido!")
-            continue
+    id = simpledialog.askinteger("Editar Senha", "Insira o ID da senha a ser editada:")
+    senhaEncontrada = next((item for item in senhas if item["Id"] == id), None)
+    if senhaEncontrada:
+        novaSenha = simpledialog.askstring("Nova Senha", f"Nova senha para {senhaEncontrada['Serviço']}:")
+        senhaEncontrada['Senha'] = novaSenha
+        messagebox.showinfo("Sucesso", "Senha atualizada com sucesso!")
+    else:
+        messagebox.showerror("Erro", "Nenhuma senha encontrada com esse ID!")
 
-        senhaEncontrada = None
-        for item in senhas:
-            if item.get("Id") == id:
-                senhaEncontrada = item
-                break  # Para o loop assim que encontra
+def exibirSenhas():
+    if not senhas:
+        messagebox.showinfo("Senhas", "Nenhuma senha cadastrada.")
+    else:
+        senhas_texto = "\n".join([f"{item['Id']} - {item['Serviço']}: {item['Senha']}" for item in senhas])
+        messagebox.showinfo("Senhas Salvas", senhas_texto)
 
-        if senhaEncontrada:
-            print(f"{senhaEncontrada['Id']} - {senhaEncontrada['Serviço']}: {senhaEncontrada['Senha']}")
-            while True:
-                op = input("Deseja editar essa senha? (S/N): ").lower().strip()
-                if op == "s":
-                    novaSenha = input(f"Nova senha para {senhaEncontrada['Serviço']}:")
-                    senhaEncontrada['Senha'] = novaSenha
-                    print("Senha atualizada com sucesso\n")
-                    return
-                elif op == "n":
-                    print("Ação cancelada\n")
-                    return
-                else:
-                    print("Opção inválida. Digite S ou N\n")
+# Tela Principal
+class GerenciadorDeSenhasApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("🔐 Gerenciador de Senhas 🔐")
+        self.root.geometry("400x300")
+
+        self.usuario_id = None
+
+        self.tela_login()
+
+    def tela_login(self):
+        self.clear_screen()
+        
+        tk.Label(self.root, text="🔐 Bem-vindo ao Gerenciador de Senhas 🔐", font=("Arial", 16)).pack(pady=20)
+        
+        tk.Label(self.root, text="Nome de Usuário:").pack(pady=5)
+        self.usuario_entry = tk.Entry(self.root)
+        self.usuario_entry.pack(pady=5)
+
+        tk.Label(self.root, text="Senha Mestra:").pack(pady=5)
+        self.senha_entry = tk.Entry(self.root, show="*")
+        self.senha_entry.pack(pady=5)
+
+        # Botão de login
+        tk.Button(self.root, text="Entrar", width=20, command=self.entrar).pack(pady=10)
+        tk.Button(self.root, text="Criar Conta", width=20, command=self.cadastrar).pack(pady=10)
+
+    def tela_principal(self):
+        self.clear_screen()
+
+        tk.Label(self.root, text="🔐 Gerenciador de Senhas 🔐", font=("Arial", 16)).pack(pady=20)
+        
+        tk.Button(self.root, text="Cadastrar Nova Senha", width=20, command=cadastrarSenha).pack(pady=10)
+        tk.Button(self.root, text="Excluir Senha", width=20, command=excluirSenha).pack(pady=10)
+        tk.Button(self.root, text="Editar Senhas", width=20, command=editarSenha).pack(pady=10)
+        tk.Button(self.root, text="Mostrar Senhas", width=20, command=exibirSenhas).pack(pady=10)
+        tk.Button(self.root, text="Sair", width=20, command=self.sair).pack(pady=10)
+
+    def clear_screen(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+
+    def entrar(self):
+        nome_usuario = self.usuario_entry.get()
+        senha_mestra = self.senha_entry.get()
+
+        if nome_usuario and senha_mestra:
+            usuario_id = self.validar_login(nome_usuario, senha_mestra)
+            if usuario_id:
+                carregarSenhas(usuario_id)
+                self.usuario_id = usuario_id
+                self.tela_principal()
+            else:
+                messagebox.showerror("Erro", "Usuário ou senha incorretos.")
         else:
-            print("Nenhuma senha encontrada com esse ID\n")
+            messagebox.showerror("Erro", "Por favor, preencha todos os campos.")
 
-def main():  
-    while True:    
-        print("=" * 25)
-        print("{:^25}".format("BEM VINDO(A)"))
-        print("=" * 25)
-        print("1️⃣  - Entrar")
-        print("2️⃣  - Criar conta")
+    def validar_login(self, nome_usuario, senha_mestra):
+        cursor.execute("SELECT id FROM usuario WHERE nome = ? AND senhaMestra = ?", (nome_usuario, senha_mestra))
+        resultado = cursor.fetchone()
+        if resultado:
+            return resultado[0]
+        else:
+            return None
 
-        try:
-            op = int(input("Como deseja proseguir? "))
-        except ValueError:
-            print("\nERRO. Valor inválido")
-            continue
-        if op not in [1, 2]:
-            print("\nOpção Inválida. Tente novamente")
-            continue
+    def cadastrar(self):
+        nome = simpledialog.askstring("Cadastro", "Digite seu nome:")
+        senha = simpledialog.askstring("Cadastro", "Digite sua senha mestra:")
+        cursor.execute("INSERT INTO usuario (nome, senhaMestra) VALUES (?, ?)", (nome, senha))
+        conn.commit()
+        self.usuario_id = cursor.lastrowid
+        carregarSenhas(self.usuario_id)
+        self.tela_principal()
 
-        if op == 1:
-            usuario_id = entrar()
-            if usuario_id is not None:
-                carregarSenhas(usuario_id)
-                break  
-        elif op == 2:
-            usuario_id = cadastrar()
-            if usuario_id is not None:
-                carregarSenhas(usuario_id)
-                break  
+    def sair(self):
+        salvarSenhasNoBD(self.usuario_id)
+        self.root.quit()
 
-
-    while True:    
-        print("=" * 40)
-        print("{:^40}".format("🔐 GERENCIADOR DE SENHAS 🔐"))
-        print("=" * 40)
-        print("1️⃣  - Cadastrar Nova Senha")
-        print("2️⃣  - Excluir Senha")
-        print("3️⃣  - Editar Senhas")
-        print("4️⃣  - Mostrar Senhas")
-        print("5️⃣  - Sair")
-        print("=" * 40)
-
-        try:
-            op = int(input("Como deseja proseguir? "))
-        except ValueError:
-            print("\nERRO. Valor inválido")
-            continue
-        if op not in [1, 2, 3, 4, 5]:
-            print("\nOpção Inválida. Tente novamente")
-            continue
-
-        elif op == 5:
-            print("\nEncerrando...")
-            salvarSenhasNoBD(usuario_id)  # Atualiza o banco de dados com as senhas da lista
-            break
-
-        elif op == 1:
-            cadastrarSenha()
-
-        elif op == 2:
-            excluirSenha()
-
-        elif op == 3:
-            editarSenha()
-
-        elif op == 4:
-            exibirSenhas()
-
-main()
+if __name__ == "__main__":
+    root = tk.Tk()
+    app = GerenciadorDeSenhasApp(root)
+    root.mainloop()
